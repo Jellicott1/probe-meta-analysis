@@ -48,8 +48,8 @@ def read_probes(probe_ids, loc:str='Probe-Data/', rand:bool=False):
 data,key = read_probes(3,rand=True)
 
 #%%
-colors = ['red', 'green', 'blue']
+fig, ax = plt.subplots(1,3)
 for i in range(len(data)):
-    plt.plot(data[i].sort_values(by='p_value',ascending=False)['p_value'].values, color=colors[i])
-    plt.scatter(np.arange(data[i].shape[0]),data[i].sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color=colors[i])
-#plt.legend(['p-value','Adj p-value'])
+    ax[i].plot(data[i].sort_values(by='p_value',ascending=False)['p_value'].values)
+    ax[i].scatter(np.arange(data[i].shape[0]),data[i].sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color='orange')
+fig.legend(['p-value','Adj p-value'],loc='upper center')
