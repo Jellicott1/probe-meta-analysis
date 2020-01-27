@@ -11,6 +11,7 @@ import numpy as np
 import random as rnd
 import os
 import matplotlib.pyplot as plt
+import scipy.stats as stat
 
 def read_probe_list(probe_files, loc):
     try:
@@ -53,3 +54,16 @@ for i in range(len(data)):
     ax[i].plot(data[i].sort_values(by='p_value',ascending=False)['p_value'].values)
     ax[i].scatter(np.arange(data[i].shape[0]),data[i].sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color='orange')
 fig.legend(['p-value','Adj p-value'],loc='upper center')
+
+#%%
+block_data = pd.read_csv('block_probe_counts.csv')
+
+plt.figure()
+plt.hist(block_data['Unique Probes'],bins=40)
+plt.ylabel('Density')
+plt.xlabel('Number of Probes')
+plt.show()
+
+block_data.describe()
+stat.iqr(block_data['Unique Probes'])
+stat.tstd(block_data['Unique Probes'])
