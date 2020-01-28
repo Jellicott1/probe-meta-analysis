@@ -56,14 +56,15 @@ for i in range(len(data)):
 fig.legend(['p-value','Adj p-value'],loc='upper center')
 
 #%%
-block_data = pd.read_csv('block_probe_counts.csv')
+block_data = pd.read_csv('probe_block_counts.csv')
 
 plt.figure()
-plt.hist(block_data['Unique Probes'],bins=40)
-plt.ylabel('Density')
+plt.hist(block_data['Unique Blocks'],bins=40)
+plt.ylabel('Frequency')
 plt.xlabel('Number of Probes')
+plt.title('Histogram of Probe Block Counts')
 plt.show()
 
 block_data.describe()
-stat.iqr(block_data['Unique Probes'])
-stat.tstd(block_data['Unique Probes'])
+stat.iqr(block_data['Unique Blocks'])
+stat.tstd(block_data['Unique Blocks'])
