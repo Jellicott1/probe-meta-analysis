@@ -1,3 +1,4 @@
 *.csv
 *.meta
-*.pngImages/
+*.png
+Images/
