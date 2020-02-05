@@ -13,6 +13,8 @@ import os
 import matplotlib.pyplot as plt
 import scipy.stats as stat
 
+#%% Data reading functions
+
 def read_probe_list(probe_files, loc):
     try:
         data_list = []
@@ -44,27 +46,51 @@ def read_probes(probe_ids, loc:str='Probe-Data/', rand:bool=False):
     else:
         raise TypeError('Invalid probe_ids type.')
 
-#%%
+#%%  Plotting functions
 
-data,key = read_probes(3,rand=True)
+def plt_p_vs_adj_p(data, n=None):
+	plt.figure()
+	if n == None:
+		n = len(data)
+	elif n > len(data):
+		raise ValueError('n cannot be greater than the number of proves in the data.')
+	if n > 1 and len(data) > 1:
+		fig, ax = plt.subplots(1,n)
+		for i in range(n):
+		    ax[i].plot(data[i].sort_values(by='p_value',ascending=False)['p_value'].values)
+		    ax[i].scatter(np.arange(data[i].shape[0]),data[i].sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color='orange')
+		fig.legend(['p-value','Adj p-value'],loc='upper center')
+	elif len(data) > 1:
+		plt.plot(data[0].sort_values(by='p_value',ascending=False)['p_value'].values)
+		plt.scatter(np.arange(data[0].shape[0]),data[0].sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color='orange')
+	elif n == 1:
+		plt.plot(data.sort_values(by='p_value',ascending=False)['p_value'].values)
+		plt.scatter(np.arange(data.shape[0]),data.sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color='orange')
+	else:
+		raise ValueError('n cannot be smaller than 1')
+	plt.show()
 
-#%%
-fig, ax = plt.subplots(1,3)
-for i in range(len(data)):
-    ax[i].plot(data[i].sort_values(by='p_value',ascending=False)['p_value'].values)
-    ax[i].scatter(np.arange(data[i].shape[0]),data[i].sort_values(by='p_value',ascending=False)['adj_p_value'].values, s=1, color='orange')
-fig.legend(['p-value','Adj p-value'],loc='upper center')
+def plt_probes_per_block_hist(block_data, bins=None):
+	plt.figure()
+	plt.hist(block_data['Unique Blocks'],bins=bins)
+	plt.ylabel('Frequency')
+	plt.xlabel('Number of Probes')
+	plt.title('Histogram of Probe Block Counts')
+	plt.show()
+	
+#%% Read data
 
-#%%
+data,key = read_probes(100, rand=True)
 block_data = pd.read_csv('probe_block_counts.csv')
 
-plt.figure()
-plt.hist(block_data['Unique Blocks'],bins=40)
-plt.ylabel('Frequency')
-plt.xlabel('Number of Probes')
-plt.title('Histogram of Probe Block Counts')
-plt.show()
+#%%
 
 block_data.describe()
 stat.iqr(block_data['Unique Blocks'])
 stat.tstd(block_data['Unique Blocks'])
+
+# block_probe_counts = pd.read_csv('block_probe_counts.csv',index_col=0)
+# Nblocks = block_probe_counts.shape[0]
+# low_count_blocks = block_probe_counts[block_probe_counts['Unique Probes'] < block_probe_counts.describe().iloc[4,0]]
+# low_count_blocks = block_probe_counts.sort_values('Unique Probes').iloc[0:300].index
+# block_data = block_data[block_data['']]
