@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import scipy.stats as stat
 from scipy.signal import savgol_filter
 from lmfit import Model
+import pickle, json
 
 #%% Data reading functions
 
@@ -31,6 +32,9 @@ def read_probe_list(probe_files, loc):
 	return data_list, probe_ind
 
 def read_probes(probe_ids, loc:str='Probe-Data/', rand:bool=False):
+	if probe_ids == 'all':
+		files = np.array(os.listdir('{}/{}'.format(os.getcwd(),loc)))
+		return read_probe_list(files,loc)
 	if rand == True:
 		if isinstance(probe_ids, int):
 			files = np.array(os.listdir('{}/{}'.format(os.getcwd(),loc)))
@@ -47,6 +51,10 @@ def read_probes(probe_ids, loc:str='Probe-Data/', rand:bool=False):
 		read_probe_list(probe_ids)
 	else:
 		raise TypeError('Invalid probe_ids type.')
+
+def read_probes_all(loc:str='Probe-Data/'):
+	files = np.array(os.listdir('{}/{}'.format(os.getcwd(),loc)))
+	return read_probe_list(files, loc)
 
 #%%  Plotting functions
 
@@ -80,54 +88,67 @@ def plt_probes_per_block_hist(block_data, bins=None):
 	plt.title('Histogram of Probe Block Counts')
 	plt.show()
 	
-def plt_many_probes(data, col='p_value'):
+def plt_many_probes(data, col='p_value', log=False):
 	plt.figure()
-	for item in data:
-		plt.plot(np.linspace(1,0,len(item)),item.sort_values(by=col,ascending=False)[col].values)
-	plt.ylabel(col)
+	if log == False:
+		for item in data:
+			plt.plot(np.linspace(1,0,len(item)),item.sort_values(by=col,ascending=False)[col].values)
+		plt.title('Superimposed plots of {} for many probes'.format(col))
+		plt.ylabel(col)
+	else:
+		for item in data:
+			plt.plot(np.linspace(1,0,len(item)),np.log10(item.sort_values(by=col,ascending=False)[col].values))
+		plt.title('Superimposed plots of log {} for many probes'.format(col))
+		plt.ylabel('log {}'.format(col))
 	plt.xlabel('Sample Ranking')
-	plt.title('Superimposed plots of {} for many probes'.format(col))
 	plt.show()
 
-#%% Read data
+def plt_poly_vs_weib_fit(data, n, weight='tail'):
+	fig, ax = plt.subplots(1,n)
+	fig2, ax2 = plt.subplots(1,2)
+	ax2[0].title.set_text('Exp-Weibull')
+	ax2[1].title.set_text('Poly')
+	for i in range(n):
+		leg = ['Data {}'.format(i)]
+		if weight == 'symmetric':
+			if len(data[i])%2 == 0:
+				weights = np.concatenate((np.logspace(1,0,int(len(data[i])/2)),np.logspace(0,1,int(len(data[i])/2))))
+			else:
+				weights = np.concatenate((np.logspace(1,0,int((len(data[i])+1)/2)),np.logspace(0,1,int((len(data[i])-1)/2))))
+			x, y, test = model_fit_weib(data, i, weight=weights)
+		else:
+			x, y, test = model_fit_weib(data, i)
+		ax[i].plot(x,test)
+		ax[i].plot(x,y)
+		ax2[0].plot(x,y)
+		leg.append('\nexpweib {}\ncorr = {:.4f}\nerror = {:.2f}'.format(i, np.corrcoef(y,test)[0,1], sum(abs(y-x))))
+		if weight == 'symmetric':
+			x, y, test = model_fit_poly(data, i, weight=weights)
+		else:
+			x, y, test = model_fit_poly(data, i)
+		ax[i].plot(x,y)
+		leg.append('\npoly {}\ncorr = {:.4f}\nerror = {:.2f}'.format(i, np.corrcoef(y,test)[0,1], sum(abs(y-x))))
+		ax[i].legend(leg)
+		ax2[1].plot(x,y)
 
-data,key = read_probes(1000, rand=True)
-block_data = pd.read_csv('probe_block_counts.csv')
-
-#%%
-
-plt_many_probes(data)
-
-block_data.describe()
-stat.iqr(block_data['Unique Blocks'])
-stat.tstd(block_data['Unique Blocks'])
-
-# block_probe_counts = pd.read_csv('block_probe_counts.csv',index_col=0)
-# Nblocks = block_probe_counts.shape[0]
-# low_count_blocks = block_probe_counts[block_probe_counts['Unique Probes'] < block_probe_counts.describe().iloc[4,0]]
-# low_count_blocks = block_probe_counts.sort_values('Unique Probes').iloc[0:300].index
-# block_data = block_data[block_data['']]
-
-#%%
-test = data[0]['p_value'].sort_values(ascending=True).values
-x = np.linspace(0,1,len(test))
-x_nat = np.arange(1,len(test)+1)
-plt.plot(x,test)
-# plt.plot(savgol_filter(data[0]['p_value'].sort_values().values, 1581, 2))
-plt.plot(x,savgol_filter(test, 51, 4))
-
-#%%
-def f(x, x_2, x_3, x_4):
+#%% Fitting functions
+def poly(x, x_2, x_3, x_4):
 	return x_2*x**2 + x_3*x**3 + x_4*x**4
+
+def dict_poly(x, coefs):
+	return poly(x, coefs['x_2'], coefs['x_3'], coefs['x_4'])
+
 def expweib(x,k,lamda,alpha):
       return alpha*(k/lamda)*((x/lamda)**(k-1))*((1-np.exp(-(x/lamda)*k))**(alpha-1))*np.exp(-(x/lamda)*k)
+
 def expweib_cdf(x,k,l,a):
 	return (1-np.exp(-(x/l)**k))**a
-def model_fit_f(data, data_index, weight='default', results=False):
+
+def model_fit_poly(data, data_index, weight='default', results=False):
 	raw = data[data_index]['p_value'].sort_values(ascending=True).values
 	raw = raw[~np.isnan(raw)]
 	x = np.linspace(0,1,len(raw))
-	pmodel = Model(f)
+	pmodel = Model(poly)
 	params = pmodel.make_params(x_2=1, x_3=0, x_4=1)
 	if weight == 'default':
 		result = pmodel.fit(raw, params, x=x, weights=np.logspace(1,0,len(raw)))
@@ -140,6 +161,7 @@ def model_fit_f(data, data_index, weight='default', results=False):
 		return x, y, result
 	else:
 		return x, y, raw
+
 def model_fit_weib(data, data_index, weight='default'):
 	raw = data[data_index]['p_value'].sort_values(ascending=True).values
 	raw = raw[~np.isnan(raw)]
@@ -157,33 +179,63 @@ def model_fit_weib(data, data_index, weight='default'):
 		result = pmodel.fit(raw, params, x=x, weights=weight)
 	y = result.eval(x=x)
 	return x, y, raw
-def f_grad(x, probe_id, coef_dict):
+
+def poly_grad(x, probe_id, coef_dict):
 	x_2, x_3, x_4 = coef_dict[probe_id].values()
 	return 2*x_2*x + 3*x_3*x**2 + 4*x_4*x**3
-#%%
-n = 6
-fig, ax = plt.subplots(1,n)
-fig2, ax2 = plt.subplots(1,2)
-ax2[0].title.set_text('Exp-Weibull')
-ax2[1].title.set_text('Poly')
-for i in range(n):
-	leg = ['Data {}'.format(i)]
-	if len(data[i])%2 == 0:
-		weight = np.concatenate((np.logspace(1,0,int(len(data[i])/2)),np.logspace(0,1,int(len(data[i])/2))))
+
+def generate_coefs(data, save=None):
+	coefs = {}
+	for i in range(len(data)):
+		x, y, result = model_fit_poly(data, i, results=True)
+		coefs[data[i]['probe_id'][0]] = result.best_values
+	if save != None:
+		save_coefs(coefs, save)
+	return coefs
+
+def data_from_coefs(coefs, space):
+	if isinstance(space, int):
+		space = np.linspace(0,1,space)
+		space_given = False
 	else:
-		weight = np.concatenate((np.logspace(1,0,int((len(data[i])+1)/2)),np.logspace(0,1,int((len(data[i])-1)/2))))
-	x, y, test = model_fit_weib(data, i)
-	ax[i].plot(x,test)
-	ax[i].plot(x,y)
-	ax2[0].plot(x,y)
-	leg.append('\nexpweib {}\ncorr = {:.4f}\nerror = {:.2f}'.format(i, np.corrcoef(y,test)[0,1], sum(abs(y-x))))
-	x, y, test = model_fit_f(data, i)
-	ax[i].plot(x,y)
-	leg.append('\npoly {}\ncorr = {:.4f}\nerror = {:.2f}'.format(i, np.corrcoef(y,test)[0,1], sum(abs(y-x))))
-	ax[i].legend(leg)
-	ax2[1].plot(x,y)
+		space_given = True
+	fitted_line = np.zeros(len(space))
+	for i in range(len(space)):
+		fitted_line[i] = dict_poly(space[i],coefs)
+	if space_given == False:
+		return fitted_line, space
+	else:
+		return fitted_line
+
+def save_coefs(coefs, file_type='pkl', path='', filename='probe_coefs'):
+	if file_type == 'pkl':
+		with open(path+filename+'.pkl','wb') as f:
+			pickle.dump(coefs, f)
+	elif file_type == 'json':
+		with open(path+filename+'.json','w') as f:
+			f.write(json.dumps(coefs))
+
+def load_coefs(filetype='pkl', path='', filename='probe_coefs'):
+	if filetype == 'pkl':
+		with open(path+filename+'.pkl','rb') as f:
+			return pickle.load(f)
+	elif filetype == 'json':
+		with open(path+filename+'.json','r') as f:
+			return json.load(f)
+
+#%% Read data
+
+data,key = read_probes(100, rand=True)
+block_data = pd.read_csv('probe_block_counts.csv')
+probe_data = pd.read_csv('block_probe_counts.csv')
+coefs = load_coefs()
+test = pd.read_csv('gpl570_data_filtered.csv', nrows=20000)
+test_probe = data[0]
+test_probe_id = test_probe['probe_id'][0]
+test_probe_coefs = coefs[test_probe_id]
+
 #%%
-# coefs = {}
-# for i in range(len(data)):
-# 	x, y, result = model_fit_f(data, i, results=True)
-# 	coefs[data[i]['probe_id'][0]] = result.best_values
+
+fitted_line, space = data_from_coefs(test_probe_coefs, len(test_probe))
+plt.plot(space,test_probe['p_value'].sort_values(ascending=True).values)
+plt.plot(space,fitted_line)
