@@ -88,7 +88,7 @@ def plt_probes_per_block_hist(block_data, bins=None):
 	plt.title('Histogram of Probe Block Counts')
 	plt.show()
 	
-def plt_many_probes(data, col='p_value', log=False):
+def plt_many_probes(data, col='p_value', log=False, hl=None):
 	plt.figure()
 	if log == False:
 		for item in data:
@@ -101,8 +101,10 @@ def plt_many_probes(data, col='p_value', log=False):
 		plt.title('Superimposed plots of log {} for many probes'.format(col))
 		plt.ylabel('log {}'.format(col))
 	plt.xlabel('Sample Ranking')
+	if ~isinstance(hl, type(None)):
+		plt.plot(np.linspace(1,0,len(hl)),hl[col].sort_values(ascending=False).values, linewidth=8)
 	plt.show()
-
+	
 def plt_poly_vs_weib_fit(data, n, weight='tail'):
 	fig, ax = plt.subplots(1,n)
 	fig2, ax2 = plt.subplots(1,2)
@@ -184,6 +186,9 @@ def poly_grad(x, probe_id, coef_dict):
 	x_2, x_3, x_4 = coef_dict[probe_id].values()
 	return 2*x_2*x + 3*x_3*x**2 + 4*x_4*x**3
 
+def poly_normal(x, probe_id, coef_dict):
+	return -1/(poly_grad(x, probe_id, coef_dict))
+
 def generate_coefs(data, save=None):
 	coefs = {}
 	for i in range(len(data)):
@@ -236,6 +241,24 @@ test_probe_coefs = coefs[test_probe_id]
 
 #%%
 
-fitted_line, space = data_from_coefs(test_probe_coefs, len(test_probe))
-plt.plot(space,test_probe['p_value'].sort_values(ascending=True).values)
-plt.plot(space,fitted_line)
+# fitted_line, space = data_from_coefs(test_probe_coefs, len(test_probe))
+
+trans_data_list = []
+space_list =[]
+for i in range(100):
+	fitted_line, space = data_from_coefs(coefs[data[i]['probe_id'][0]], len(data[i]))
+	trans_data = np.zeros(len(data[i]))
+	for j in range(len(trans_data)):
+		trans_data[j] = poly_grad(space[j], data[i]['probe_id'][0], coefs)*data[i]['p_value'][j]
+		trans_data.sort()
+	trans_data_list.append(trans_data)
+	space_list.append(space)
+
+# plt.plot(space,data[i]['p_value'].sort_values(ascending=True).values)
+# plt.plot(space,fitted_line)
+# plt.plot(space,np.sort(trans_data)/max(trans_data))
+#%%
+for i in range(len(trans_data_list)):
+	plt.plot(space_list[i],trans_data_list[i])
+	plt.plot(space_list[i],data[i]['p_value'].sort_values(ascending=True).values)
+	
