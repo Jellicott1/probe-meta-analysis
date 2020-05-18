@@ -11,26 +11,23 @@ import numpy as np
 import random as rnd
 import os
 import matplotlib.pyplot as plt
-import scipy.stats as stat
+# import scipy.stats as stat
 from scipy.optimize import newton
 # from scipy.signal import savgol_filter
 from lmfit import Model
 import pickle, json
+import time
 
 #%% Data reading functions
 
 def read_probe_list(probe_files, loc):
 	try:
-		data_list = []
-		probe_ind = {}
-		ind = 0
+		data_list = {}
 		for item in probe_files:
-			data_list.append(pd.read_csv('{}{}'.format(loc,item)))
-			probe_ind[item.strip('.csv')] = ind
-			ind += 1
+			data_list[item.strip('.csv')] = pd.read_csv('{}{}'.format(loc,item))
 	except:
 		raise TypeError('Invalid Probe ID(s).')
-	return data_list, probe_ind
+	return data_list
 
 def read_probes(probe_ids, loc:str='Probe-Data/', rand:bool=False):
 	if probe_ids == 'all':
@@ -61,6 +58,7 @@ def read_probes_all(loc:str='Probe-Data/'):
 
 def plt_p_vs_adj_p(data, n=None):
 	plt.figure()
+	data = list(data.values())
 	if n == None:
 		n = len(data)
 	elif n > len(data):
@@ -92,12 +90,12 @@ def plt_probes_per_block_hist(block_data, bins=None):
 def plt_many_probes(data, col='p_value', log=False, hl=None):
 	plt.figure()
 	if log == False:
-		for item in data:
+		for item in data.values():
 			plt.plot(np.linspace(1,0,len(item)),item.sort_values(by=col,ascending=False)[col].values)
 		plt.title('Superimposed plots of {} for many probes'.format(col))
 		plt.ylabel(col)
 	else:
-		for item in data:
+		for item in data.values():
 			plt.plot(np.linspace(1,0,len(item)),np.log10(item.sort_values(by=col,ascending=False)[col].values))
 		plt.title('Superimposed plots of log {} for many probes'.format(col))
 		plt.ylabel('log {}'.format(col))
@@ -111,6 +109,7 @@ def plt_poly_vs_weib_fit(data, n, weight='tail'):
 	fig2, ax2 = plt.subplots(1,2)
 	ax2[0].title.set_text('Exp-Weibull')
 	ax2[1].title.set_text('Poly')
+	data = list(data.values())
 	for i in range(n):
 		leg = ['Data {}'.format(i)]
 		if weight == 'symmetric':
@@ -154,6 +153,19 @@ def plt_grad_transf(trans_data_list, space_list):
 	plt.xlabel('Rank Within Probe')
 	plt.ylabel('P-Value/Transformed P-Value')
 
+def plt_probe_vs_mean(probe_id, coefs, resolution=1000, probe_points=[], mean_points=[], float_points=[]):
+	probe, space = data_from_coefs(coefs[probe_id], resolution)
+	mean = data_from_coefs(coefs['mean'], space)
+	plt.plot(space, probe)
+	plt.plot(space, mean)
+	for x in probe_points:
+		plt.scatter(x, dict_poly(x, coefs[probe_id]), s=50)
+	for x in mean_points:
+		plt.scatter(x, dict_poly(x, coefs['mean']), s=50)
+	for item in float_points:
+		plt.scatter(item[0],item[1], s=50)
+	plt.legend([probe_id, 'mean'])
+
 #%% Fitting functions
 def poly(x, x_2, x_3, x_4):
 	return x_2*x**2 + x_3*x**3 + x_4*x**4
@@ -167,8 +179,8 @@ def expweib(x,k,lamda,alpha):
 def expweib_cdf(x,k,l,a):
 	return (1-np.exp(-(x/l)**k))**a
 
-def model_fit_poly(data, data_index, weight='default', results=False):
-	raw = data[data_index]['p_value'].sort_values(ascending=True).values
+def model_fit_poly(data, probe_id, weight='default', results=False):
+	raw = data[probe_id]['p_value'].sort_values(ascending=True).values
 	raw = raw[~np.isnan(raw)]
 	x = np.linspace(0,1,len(raw))
 	pmodel = Model(poly)
@@ -185,8 +197,8 @@ def model_fit_poly(data, data_index, weight='default', results=False):
 	else:
 		return x, y, raw
 
-def model_fit_weib(data, data_index, weight='default'):
-	raw = data[data_index]['p_value'].sort_values(ascending=True).values
+def model_fit_weib(data, probe_id, weight='default'):
+	raw = data[probe_id]['p_value'].sort_values(ascending=True).values
 	raw = raw[~np.isnan(raw)]
 	x = np.linspace(0,1,len(raw))
 	pmodel = Model(expweib_cdf)
@@ -212,9 +224,9 @@ def poly_normal(x, probe_id, coef_dict):
 
 def generate_coefs(data, save=None):
 	coefs = {}
-	for i in range(len(data)):
-		x, y, result = model_fit_poly(data, i, results=True)
-		coefs[data[i]['probe_id'][0]] = result.best_values
+	for item in data.keys():
+		x, y, result = model_fit_poly(data, item, results=True)
+		coefs[item] = result.best_values
 	if save != None:
 		save_coefs(coefs, save)
 	return coefs
@@ -263,19 +275,20 @@ def gen_mean_coefs(coefs, save_to_coefs=False):
 	else:
 		return mean_coefs
 	
-def grad_transform(data, coefs, i):
-	fitted_line, space = data_from_coefs(coefs[data[i]['probe_id'][0]], len(data[i]))
-	trans_data = np.zeros(len(data[i]))
+def grad_transform(data, coefs, probe_id):
+	fitted_line, space = data_from_coefs(coefs[probe_id], len(data[probe_id]))
+	trans_data = np.zeros(len(data[probe_id]))
 	for j in range(len(trans_data)):
-		trans_data[j] = poly_grad(space[j], data[i]['probe_id'][0], coefs)*data[i]['p_value'][j]
+		trans_data[j] = poly_grad(space[j], probe_id, coefs)*data[probe_id]['p_value'][j]
 		trans_data.sort()
 	return trans_data, space
 
 def grad_transform_n(n, data, coefs):
 	trans_data_list = []
 	space_list =[]
+	keys = data = list(data.keys())
 	for i in range(n):
-		trans_data, space = grad_transform(data, coefs, i)
+		trans_data, space = grad_transform(data, coefs, keys[i])
 		trans_data_list.append(trans_data)
 		space_list.append(space)
 	return trans_data_list, space_list
@@ -295,12 +308,43 @@ def call_newton_raphson(probe_id, coefs, point):
 	ans = newton(intersection_func, point[0], intersection_func_dy_dx, args, fprime2=intersection_func_d2y_dx2)
 	return ans
 
+def transform_probe(probe_id, data, coefs):
+	trans_data = [0]
+	data = data[probe_id]['p_value'].sort_values()
+	error = []
+	x_test = []
+	space = np.linspace(0,1,len(data)+2)
+	for i in range(len(data)):
+		try:
+			x = call_newton_raphson(probe_id, coefs, [space[i+1], dict_poly(space[i+1], coefs[probe_id])])
+			x_test.append(x)
+			if dict_poly(x,coefs['mean']) > 1:
+				trans_data.append(1)
+			else:
+				trans_data.append(dict_poly(x,coefs['mean']))
+		except RuntimeError:
+			error.append([i,data[i]])
+			trans_data.append(np.NaN)
+	if max(trans_data) > 1:
+		print('Probability greater than 1 returned')
+	trans_data.append(1)
+	if len(error) >= 1:
+		return trans_data, error, x_test
+	else:
+		return trans_data, space, x_test
 #%% Read data
 
 if __name__ == '__main__':
-	data,key = read_probes_all()#read_probes(100, rand=True)
+	data = read_probes_all()#read_probes(1000, rand=True)
 	block_data = pd.read_csv('probe_block_counts.csv')
 	probe_data = pd.read_csv('block_probe_counts.csv')
 	coefs = load_coefs(filename='probe_coefs+mean')
 	# trans_data_list, space_list = grad_transform_n(100, data, coefs)
+
+#%%
+mean_data = data_from_coefs(coefs['mean'],2000)
+test = transform_probe('47571_at', data, coefs)
+plt.plot(mean_data[1],mean_data[0])
+plt.plot(np.linspace(0,1,len(data['47571_at'])),data['47571_at']['p_value'].sort_values())
+plt.plot(test[1], test[0])
 	
