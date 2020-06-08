@@ -109,9 +109,11 @@ def plt_poly_vs_weib_fit(data, n, weight='tail'):
 	fig2, ax2 = plt.subplots(1,2)
 	ax2[0].title.set_text('Exp-Weibull')
 	ax2[1].title.set_text('Poly')
+	fig.tight_layout(pad=1.0)
+	probe_ids = list(data.keys())
 	data = list(data.values())
 	for i in range(n):
-		leg = ['Data {}'.format(i)]
+		leg = ['Probe {}'.format(probe_ids[i])]
 		if weight == 'symmetric':
 			if len(data[i])%2 == 0:
 				weights = np.concatenate((np.logspace(1,0,int(len(data[i])/2)),np.logspace(0,1,int(len(data[i])/2))))
@@ -124,6 +126,9 @@ def plt_poly_vs_weib_fit(data, n, weight='tail'):
 		ax[i].plot(x,y)
 		ax2[0].plot(x,y)
 		leg.append('\nexpweib {}\ncorr = {:.4f}\nerror = {:.2f}'.format(i, np.corrcoef(y,test)[0,1], sum(abs(y-x))))
+		ax[i].set_xlabel('Sample Ranking')
+		ax[i].set_ylabel('P-Value')
+		
 		if weight == 'symmetric':
 			x, y, test = model_fit_poly(data, i, weight=weights)
 		else:
@@ -146,7 +151,7 @@ def plt_fitted_curves(coefs_dict, keys, hl=None, resolution=1000):
 	plt.xlabel('Rank Within Probe')
 	plt.ylabel('P-Value')
 	
-def plt_grad_transf(trans_data_list, space_list):
+def plt_grad_transf(trans_data_list, space_list, data):
 	for i in range(len(trans_data_list)):
 		plt.plot(space_list[i],trans_data_list[i])
 		plt.plot(space_list[i],data[i]['p_value'].sort_values(ascending=True).values)
@@ -165,6 +170,18 @@ def plt_probe_vs_mean(probe_id, coefs, resolution=1000, probe_points=[], mean_po
 	for item in float_points:
 		plt.scatter(item[0],item[1], s=50)
 	plt.legend([probe_id, 'mean'])
+
+def plt_trans_probe(probe_id, data, coefs, resolution=1000):
+	mean_data = data_from_coefs(coefs['mean'],resolution)
+	trans_data = transform_probe('47571_at', data, coefs)
+	plt.plot(mean_data[1],mean_data[0])
+	plt.plot(np.linspace(0,1,len(data['47571_at'])),data['47571_at']['p_value'].sort_values())
+	plt.plot(trans_data[1], trans_data[0])
+	plt.xlabel('Sample Ranking')
+	plt.ylabel('P-Value')
+	plt.legend(['Mean Probe', 'Raw Data', 'Transformed Data'])
+	
+# def plt_trans_data(data, probes, )
 
 #%% Fitting functions
 def poly(x, x_2, x_3, x_4):
@@ -228,7 +245,7 @@ def generate_coefs(data, save=None):
 		x, y, result = model_fit_poly(data, item, results=True)
 		coefs[item] = result.best_values
 	if save != None:
-		save_coefs(coefs, save)
+		save_dict(coefs, save)
 	return coefs
 
 def data_from_coefs(coefs, space):
@@ -245,7 +262,7 @@ def data_from_coefs(coefs, space):
 	else:
 		return fitted_line
 
-def save_coefs(coefs, file_type='pkl', path='', filename='probe_coefs'):
+def save_dict(coefs, file_type='pkl', path='', filename='probe_coefs'):
 	if file_type == 'pkl':
 		with open(path+filename+'.pkl','wb') as f:
 			pickle.dump(coefs, f)
@@ -253,7 +270,7 @@ def save_coefs(coefs, file_type='pkl', path='', filename='probe_coefs'):
 		with open(path+filename+'.json','w') as f:
 			f.write(json.dumps(coefs))
 
-def load_coefs(filetype='pkl', path='', filename='probe_coefs'):
+def load_dict(filetype='pkl', path='', filename='probe_coefs'):
 	if filetype == 'pkl':
 		with open(path+filename+'.pkl','rb') as f:
 			return pickle.load(f)
@@ -312,12 +329,12 @@ def transform_probe(probe_id, data, coefs):
 	trans_data = [0]
 	data = data[probe_id]['p_value'].sort_values()
 	error = []
-	x_test = []
+# 	x_test = []
 	space = np.linspace(0,1,len(data)+2)
 	for i in range(len(data)):
 		try:
 			x = call_newton_raphson(probe_id, coefs, [space[i+1], dict_poly(space[i+1], coefs[probe_id])])
-			x_test.append(x)
+# 			x_test.append(x)
 			if dict_poly(x,coefs['mean']) > 1:
 				trans_data.append(1)
 			else:
@@ -329,22 +346,35 @@ def transform_probe(probe_id, data, coefs):
 		print('Probability greater than 1 returned')
 	trans_data.append(1)
 	if len(error) >= 1:
-		return trans_data, error, x_test
+		return trans_data, error#, x_test
 	else:
-		return trans_data, space, x_test
+		return trans_data, space#, x_test
+
+def transform_all(data, coefs, timeit=False):
+	if timeit == True:
+		start = time.perf_counter()
+	trans_data = {}
+	error_data = {}
+	for probe in data.keys():
+		temp_data = transform_probe(probe, data, coefs)
+		trans_data[probe] = temp_data[0]
+		if len(temp_data[1]) > 0:
+			error_data[probe] = temp_data[1]
+	if timeit == True:
+		time_taken = time.perf_counter() - start
+		return trans_data, time_taken, error_data
+	return trans_data, error_data
+		
 #%% Read data
 
 if __name__ == '__main__':
 	data = read_probes_all()#read_probes(1000, rand=True)
 	block_data = pd.read_csv('probe_block_counts.csv')
 	probe_data = pd.read_csv('block_probe_counts.csv')
-	coefs = load_coefs(filename='probe_coefs+mean')
-	# trans_data_list, space_list = grad_transform_n(100, data, coefs)
+	coefs = load_dict(filename='probe_coefs+mean')
+	trans_data = load_dict(filename='transformed_probe_data', path='Transformed-Probe-Data/')
+# 	trans_data_list, space_list = grad_transform_n(100, data, coefs)
 
 #%%
-mean_data = data_from_coefs(coefs['mean'],2000)
-test = transform_probe('47571_at', data, coefs)
-plt.plot(mean_data[1],mean_data[0])
-plt.plot(np.linspace(0,1,len(data['47571_at'])),data['47571_at']['p_value'].sort_values())
-plt.plot(test[1], test[0])
+# plt_trans_probe('47571_at', data, coefs)
 	
