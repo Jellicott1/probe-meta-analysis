@@ -181,7 +181,16 @@ def plt_trans_probe(probe_id, data, coefs, resolution=1000):
 	plt.ylabel('P-Value')
 	plt.legend(['Mean Probe', 'Raw Data', 'Transformed Data'])
 	
-# def plt_trans_data(data, probes, )
+def plt_trans_data(data, probes, mean=None):
+	if isinstance(probes, int):
+		probes = rnd.sample(data.keys(),k=probes)
+	for item in probes:
+		plt.plot(np.linspace(0,1,len(data[item])),data[item])
+	if mean != None:
+		plt.plot(mean[1], mean[0], linewidth=4, color='black')
+	plt.xlabel('Sample Ranking')
+	plt.ylabel('Transformed P-Value')
+			
 
 #%% Fitting functions
 def poly(x, x_2, x_3, x_4):
