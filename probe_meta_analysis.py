@@ -54,6 +54,19 @@ def read_probes_all(loc:str='Probe-Data/'):
 	files = np.array(os.listdir('{}/{}'.format(os.getcwd(),loc)))
 	return read_probe_list(files, loc)
 
+def read_matrix_file(series, loc:str='GEO-Conversions/'):
+	path = loc+series+'_series_matrix.txt'
+	with open(path) as f:
+		i = 0
+		for line in f:
+			if '!series_matrix_table_begin' in line:
+				start = i
+				break
+			else:
+				i += 1				
+	data = pd.read_csv(path, sep='\t', header=start, skipfooter=1, na_values='null', engine='python')	
+	return data
+
 #%%  Plotting functions
 
 def plt_p_vs_adj_p(data, n=None):
@@ -373,6 +386,14 @@ def transform_all(data, coefs, timeit=False):
 		time_taken = time.perf_counter() - start
 		return trans_data, time_taken, error_data
 	return trans_data, error_data
+
+def transform_sample(data, coefs):
+	probe_ids = data['ID_REF']
+	series_list = list(data.columns[1:])
+	for series in series_list:
+		for probe in probe_ids:
+			x = call_newton_raphson(probe, coefs, [data[series][probe]
+			
 		
 #%% Read data
 
